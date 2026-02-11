@@ -637,6 +637,7 @@ class History(ListView, ArticleMixin):
         kwargs.update(kwargs_article)
         kwargs.update(kwargs_listview)
         kwargs["selected_tab"] = "history"
+        kwargs["urlpath_path"] = self.urlpath.path if self.urlpath else ""
         return kwargs
 
     @method_decorator(get_article(can_read=True))
