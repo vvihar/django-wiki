@@ -41,7 +41,12 @@ def _get_request_cache():
         return None
     cache = getattr(_thread_cache, "wiki_urlpath_cache", None)
     if cache is None:
-        cache = {"by_path": {}, "ancestors": {}, "paths": {}}
+        cache = {
+            "by_path": {},
+            "ancestors": {},
+            "paths": {},
+            "by_article_id": {},
+        }
         _thread_cache.wiki_urlpath_cache = cache
     return cache
 
@@ -337,6 +342,24 @@ class URLPath(MPTTModel):
         if cache is not None:
             cache["by_path"][cache_key] = parent
         return parent
+
+    @classmethod
+    def get_by_article_id(cls, article_id):
+        cache = _get_request_cache()
+        cache_key = (Site.objects.get_current().id, article_id)
+        if cache is not None:
+            cached = cache["by_article_id"].get(cache_key)
+            if cached is not None:
+                return cached
+        urlpath = (
+            cls.objects.select_related_common()
+            .filter(article_id=article_id)
+            .order_by("tree_id", "lft")
+            .first()
+        )
+        if cache is not None:
+            cache["by_article_id"][cache_key] = urlpath
+        return urlpath
 
     def get_absolute_url(self):
         return reverse("wiki:get", kwargs={"path": self.path})

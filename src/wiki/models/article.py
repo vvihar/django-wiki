@@ -1,3 +1,4 @@
+from django.apps import apps
 from django.conf import settings as django_settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -282,7 +283,8 @@ class Article(models.Model):
         cache.delete(self.get_cache_key())
 
     def get_url_kwargs(self):
-        urlpath = self.urlpath_set.all().first()
+        URLPath = apps.get_model("wiki", "URLPath")
+        urlpath = URLPath.get_by_article_id(self.id)
         if urlpath:
             return {"path": urlpath.path}
         return {"article_id": self.id}
