@@ -55,7 +55,9 @@ def which_article(path=None, article_id=None, **kwargs):
         # TODO We should try to grab the article from URLPath so the
         # caching is good, and fall back to grabbing it from
         # Article.objects if not
-        article = models.Article.objects.get(id=article_id)
+        article = models.Article.objects.select_related(
+            "current_revision", "owner", "group"
+        ).get(id=article_id)
         try:
             urlpath = models.URLPath.objects.get(articles__article=article)
         except (

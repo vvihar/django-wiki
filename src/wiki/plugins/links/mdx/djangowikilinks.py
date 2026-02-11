@@ -59,11 +59,15 @@ class WikiPath(markdown.inlinepatterns.Pattern):
         super().__init__(pattern, **kwargs)
         self.config = config
         self._article_urlpath = None
+        self._absolute_cache = {}
+        self._relative_cache = {}
 
     def _get_article_urlpath(self):
         if self._article_urlpath is None:
-            self._article_urlpath = models.URLPath.objects.get(
-                article=self.md.article
+            self._article_urlpath = (
+                models.URLPath.objects.select_related_common().get(
+                    article=self.md.article
+                )
             )
         return self._article_urlpath
 
@@ -86,11 +90,16 @@ class WikiPath(markdown.inlinepatterns.Pattern):
 
             urlpath = None
             path = path_from_link
-            try:
-                urlpath = models.URLPath.get_by_path(wiki_path)
+            if wiki_path in self._absolute_cache:
+                urlpath = self._absolute_cache[wiki_path]
+            else:
+                try:
+                    urlpath = models.URLPath.get_by_path(wiki_path)
+                except models.URLPath.DoesNotExist:
+                    urlpath = None
+                self._absolute_cache[wiki_path] = urlpath
+            if urlpath:
                 path = urlpath.get_absolute_url()
-            except models.URLPath.DoesNotExist:
-                pass
         # Treat as relative path, meaning relative to the markdown instance's article
         else:
             urlpath = self._get_article_urlpath()
@@ -103,15 +112,19 @@ class WikiPath(markdown.inlinepatterns.Pattern):
 
             path_from_link = os_path.join(starting_path, wiki_path)
 
-            lookup = models.URLPath.objects.none()
-            if urlpath.parent:
-                lookup = urlpath.parent.get_descendants().filter(
-                    slug=wiki_path
-                )
+            cache_key = (urlpath.id, wiki_path)
+            if cache_key in self._relative_cache:
+                urlpath = self._relative_cache[cache_key]
             else:
-                lookup = urlpath.get_descendants().filter(slug=wiki_path)
-
-            urlpath = lookup.first()
+                lookup = models.URLPath.objects.none()
+                if urlpath.parent:
+                    lookup = urlpath.parent.get_descendants().filter(
+                        slug=wiki_path
+                    )
+                else:
+                    lookup = urlpath.get_descendants().filter(slug=wiki_path)
+                urlpath = lookup.first()
+                self._relative_cache[cache_key] = urlpath
             if urlpath:
                 path = urlpath.get_absolute_url()
             else:

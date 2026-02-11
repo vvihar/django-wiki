@@ -1,10 +1,13 @@
 import logging
+import threading
 import warnings
 
 from django.contrib.contenttypes.fields import GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.sites.models import Site
 from django.core.exceptions import ValidationError
+from django.core.signals import request_finished
+from django.core.signals import request_started
 from django.db import models
 from django.db import transaction
 from django.db.models.signals import post_save
@@ -29,6 +32,32 @@ __all__ = [
 
 
 log = logging.getLogger(__name__)
+
+_thread_cache = threading.local()
+
+
+def _get_request_cache():
+    if not getattr(_thread_cache, "wiki_urlpath_cache_active", False):
+        return None
+    cache = getattr(_thread_cache, "wiki_urlpath_cache", None)
+    if cache is None:
+        cache = {"by_path": {}, "ancestors": {}}
+        _thread_cache.wiki_urlpath_cache = cache
+    return cache
+
+
+def _mark_request_active(**kwargs):
+    _thread_cache.wiki_urlpath_cache_active = True
+
+
+def _clear_request_cache(**kwargs):
+    if hasattr(_thread_cache, "wiki_urlpath_cache"):
+        delattr(_thread_cache, "wiki_urlpath_cache")
+    _thread_cache.wiki_urlpath_cache_active = False
+
+
+request_started.connect(_mark_request_active)
+request_finished.connect(_clear_request_cache)
 
 
 class URLPath(MPTTModel):
@@ -109,12 +138,20 @@ class URLPath(MPTTModel):
         #   interface.
         if self.pk and hasattr(self, "_cached_ancestors"):
             return self._cached_ancestors
+        cache = _get_request_cache()
+        if self.pk and cache is not None:
+            cached = cache["ancestors"].get(self.pk)
+            if cached is not None:
+                self._cached_ancestors = cached
+                return self._cached_ancestors
         if not self.pk or not self.get_ancestors().exists():
             self._cached_ancestors = []
         else:
             self._cached_ancestors = list(
                 self.get_ancestors().select_related_common()
             )
+        if self.pk and cache is not None:
+            cache["ancestors"][self.pk] = self._cached_ancestors
 
         return self._cached_ancestors
 
@@ -188,6 +225,10 @@ class URLPath(MPTTModel):
             )
         return root_nodes[0]
 
+    @classmethod
+    def clear_request_cache(cls):
+        _clear_request_cache()
+
     class MPTTMeta:
         pass
 
@@ -238,10 +279,23 @@ class URLPath(MPTTModel):
         # always fetched anyways so it's fine to fetch them here.
         path = path.lstrip("/")
         path = path.rstrip("/")
+        cache = _get_request_cache()
+        cache_key = (
+            Site.objects.get_current().id,
+            path,
+            settings.URL_CASE_SENSITIVE,
+        )
+        if cache is not None:
+            cached = cache["by_path"].get(cache_key)
+            if cached is not None:
+                return cached
 
         # Root page requested
         if not path:
-            return cls.root()
+            root = cls.root()
+            if cache is not None:
+                cache["by_path"][cache_key] = root
+            return root
 
         slugs = path.split("/")
         level = 1
@@ -265,6 +319,8 @@ class URLPath(MPTTModel):
                 parent = child
             level += 1
 
+        if cache is not None:
+            cache["by_path"][cache_key] = parent
         return parent
 
     def get_absolute_url(self):

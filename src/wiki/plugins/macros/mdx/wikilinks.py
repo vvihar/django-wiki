@@ -14,11 +14,18 @@ def build_url(label, base, end, md):
     """Build a url from the label, a base, and an end."""
     clean_label = re.sub(r"([ ]+_)|(_[ ]+)|([ ]+)", "_", label)
     urlpaths = md.article.urlpath_set.all()
+    if not hasattr(md, "_wikilinks_child_cache"):
+        md._wikilinks_child_cache = {}
     # Nevermind about the base we are fed, just keep the original
     # call pattern from the wikilinks plugin for later...
     base = reverse("wiki:get", kwargs={"path": ""})
     for urlpath in urlpaths:
-        if urlpath.children.filter(slug=clean_label).exists():
+        cache_key = (urlpath.id, clean_label)
+        if cache_key not in md._wikilinks_child_cache:
+            md._wikilinks_child_cache[cache_key] = urlpath.children.filter(
+                slug=clean_label
+            ).exists()
+        if md._wikilinks_child_cache[cache_key]:
             base = ""
             break
     return f"{base}{clean_label}{end}"

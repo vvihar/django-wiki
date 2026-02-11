@@ -172,7 +172,7 @@ class URLPathManager(TreeManager):
         )
 
     def select_related_common(self):
-        return self.get_queryset().common_select_related()
+        return self.get_queryset().select_related_common()
 
     def active(self):
         return self.get_queryset().active()

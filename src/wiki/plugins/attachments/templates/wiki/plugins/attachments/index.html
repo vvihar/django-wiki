@@ -48,7 +48,7 @@
           <p style="margin-top: 10px; margin-bottom:0;">
           <a href="{% url 'wiki:attachments_history' path=urlpath.path article_id=article.id attachment_id=attachment.id %}">
             <span class="fa fa-clock"></span>
-            {% trans "File history" %} ({{ attachment.attachmentrevision_set.all.count }} {% trans "revisions" %})
+            {% trans "File history" %} ({{ attachment.revision_count }} {% trans "revisions" %})
           </a>
           </p>
         </td>

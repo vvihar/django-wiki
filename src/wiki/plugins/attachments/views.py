@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Count
 from django.db.models import Q
 from django.http import Http404
 from django.http import HttpResponseRedirect
@@ -33,13 +34,30 @@ class AttachmentView(ArticleMixin, FormView):
                     articles=article, current_revision__deleted=False
                 )
                 .exclude(current_revision__file=None)
+                .select_related(
+                    "article",
+                    "article__current_revision",
+                    "current_revision",
+                    "current_revision__user",
+                    "current_revision__previous_revision",
+                )
+                .annotate(revision_count=Count("attachmentrevision"))
                 .order_by("original_filename")
             )
 
             self.form_class = forms.AttachmentArchiveForm
         else:
-            self.attachments = models.Attachment.objects.active().filter(
-                articles=article
+            self.attachments = (
+                models.Attachment.objects.active()
+                .filter(articles=article)
+                .select_related(
+                    "article",
+                    "article__current_revision",
+                    "current_revision",
+                    "current_revision__user",
+                    "current_revision__previous_revision",
+                )
+                .annotate(revision_count=Count("attachmentrevision"))
             )
 
         # Fixing some weird transaction issue caused by adding commit_manually
@@ -92,8 +110,16 @@ class AttachmentView(ArticleMixin, FormView):
         if "form" not in kwargs:
             kwargs["form"] = self.get_form()
         kwargs["attachments"] = self.attachments
-        kwargs["deleted_attachments"] = models.Attachment.objects.filter(
-            articles=self.article, current_revision__deleted=True
+        kwargs["deleted_attachments"] = (
+            models.Attachment.objects.filter(
+                articles=self.article, current_revision__deleted=True
+            )
+            .select_related(
+                "current_revision",
+                "current_revision__user",
+                "current_revision__previous_revision",
+            )
+            .annotate(revision_count=Count("attachmentrevision"))
         )
         kwargs["search_form"] = forms.SearchForm()
         kwargs["selected_tab"] = "attachments"

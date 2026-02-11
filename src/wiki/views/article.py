@@ -470,6 +470,9 @@ class Move(ArticleMixin, FormView):
         self.urlpath.slug = form.cleaned_data["slug"]
         self.urlpath.save()
 
+        # Clear any request-local URLPath cache to avoid stale paths
+        models.URLPath.clear_request_cache()
+
         # Reload url path form database
         self.urlpath = models.URLPath.objects.get(pk=self.urlpath.pk)
 
