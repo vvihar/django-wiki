@@ -144,14 +144,21 @@ class URLPath(MPTTModel):
             if cached is not None:
                 self._cached_ancestors = cached
                 return self._cached_ancestors
-        if not self.pk or not self.get_ancestors().exists():
+        if not self.pk:
             self._cached_ancestors = []
         else:
-            self._cached_ancestors = list(
-                self.get_ancestors().select_related_common()
-            )
-        if self.pk and cache is not None:
-            cache["ancestors"][self.pk] = self._cached_ancestors
+            ancestors = list(self.get_ancestors().select_related_common())
+            self._cached_ancestors = ancestors
+            if cache is not None:
+                cache["ancestors"][self.pk] = ancestors
+            # Prime ancestor caches to avoid N+1 when rendering breadcrumbs.
+            for idx, ancestor in enumerate(ancestors):
+                if not hasattr(ancestor, "_cached_ancestors"):
+                    ancestor._cached_ancestors = ancestors[:idx]
+                if cache is not None:
+                    cache["ancestors"][
+                        ancestor.pk
+                    ] = ancestor._cached_ancestors
 
         return self._cached_ancestors
 
