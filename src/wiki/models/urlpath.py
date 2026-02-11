@@ -107,9 +107,11 @@ class URLPath(MPTTModel):
         # "not self.pk": HACK needed till PR#591 is included in all supported django-mptt
         #   versions. Prevent accessing a deleted URLPath when deleting it from the admin
         #   interface.
+        if self.pk and hasattr(self, "_cached_ancestors"):
+            return self._cached_ancestors
         if not self.pk or not self.get_ancestors().exists():
             self._cached_ancestors = []
-        if not hasattr(self, "_cached_ancestors"):
+        else:
             self._cached_ancestors = list(
                 self.get_ancestors().select_related_common()
             )

@@ -19,16 +19,18 @@ class GlobalHistory(ListView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
+        base = self.model.objects.can_read(self.request.user).select_related(
+            "article",
+            "article__current_revision",
+            "user",
+            "previous_revision",
+        )
         if self.only_last == "1":
-            return (
-                self.model.objects.can_read(self.request.user)
-                .filter(article__current_revision=F("id"))
-                .order_by("-modified")
-            )
-        else:
-            return self.model.objects.can_read(self.request.user).order_by(
+            return base.filter(article__current_revision=F("id")).order_by(
                 "-modified"
             )
+        else:
+            return base.order_by("-modified")
 
     def get_context_data(self, **kwargs):
         kwargs["only_last"] = self.only_last

@@ -21,6 +21,7 @@ class LinkTreeprocessor(Treeprocessor):
         self.broken_class = config["broken"]
         self.internal_class = config["internal"]
         self.external_class = config["external"]
+        self._which_article_cache = {}
 
     @property
     def my_urlpath(self):
@@ -60,13 +61,19 @@ class LinkTreeprocessor(Treeprocessor):
             # Links outside wiki
             return self.external_class
 
-        try:
-            article, urlpath = which_article(**target.kwargs)
-        except (
-            wiki.core.exceptions.NoRootURL,
-            URLPath.DoesNotExist,
-            Article.DoesNotExist,
-        ):
+        cache_key = tuple(sorted(target.kwargs.items()))
+        if cache_key not in self._which_article_cache:
+            try:
+                which_article(**target.kwargs)
+                self._which_article_cache[cache_key] = True
+            except (
+                wiki.core.exceptions.NoRootURL,
+                URLPath.DoesNotExist,
+                Article.DoesNotExist,
+            ):
+                self._which_article_cache[cache_key] = False
+
+        if not self._which_article_cache[cache_key]:
             return self.broken_class
 
         return self.internal_class

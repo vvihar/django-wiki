@@ -117,18 +117,19 @@ class Article(models.Model):
     def get_children(self, max_num=None, user_can_read=None, **kwargs):
         """NB! This generator is expensive, so use it with care!!"""
         cnt = 0
-        for obj in self.articleforobject_set.filter(is_mptt=True):
+        for obj in self.articleforobject_set.filter(
+            is_mptt=True
+        ).prefetch_related("content_object"):
+            objects = obj.content_object.get_children().filter(**kwargs)
+            if hasattr(objects, "select_related_common"):
+                objects = objects.select_related_common()
             if user_can_read:
-                objects = (
-                    obj.content_object.get_children()
-                    .filter(**kwargs)
-                    .can_read(user_can_read)
-                )
-            else:
-                objects = obj.content_object.get_children().filter(**kwargs)
+                objects = objects.can_read(user_can_read)
             for child in objects.order_by(
                 "articles__article__current_revision__title"
             ):
+                if hasattr(child, "set_cached_ancestors_from_parent"):
+                    child.set_cached_ancestors_from_parent(obj.content_object)
                 cnt += 1
                 if max_num and cnt > max_num:
                     return
@@ -281,9 +282,9 @@ class Article(models.Model):
         cache.delete(self.get_cache_key())
 
     def get_url_kwargs(self):
-        urlpaths = self.urlpath_set.all()
-        if urlpaths.exists():
-            return {"path": urlpaths[0].path}
+        urlpath = self.urlpath_set.all().first()
+        if urlpath:
+            return {"path": urlpath.path}
         return {"article_id": self.id}
 
     def get_absolute_url(self):
@@ -317,7 +318,6 @@ class ArticleForObject(models.Model):
 
 
 class BaseRevisionMixin(models.Model):
-
     """This is an abstract model used as a mixin: Do not override any of the
     core model methods but respect the inheritor's freedom to do so itself."""
 
@@ -390,7 +390,6 @@ class BaseRevisionMixin(models.Model):
 
 
 class ArticleRevision(BaseRevisionMixin, models.Model):
-
     """This is where main revision data is stored. To make it easier to
     copy, do NEVER create m2m relationships."""
 

@@ -14,10 +14,9 @@ class DeletedListView(TemplateView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
-        article_list = models.Article.objects.all()
-        deleted_articles = []
-        for article in article_list:
-            if article.current_revision.deleted:
-                deleted_articles.append(article)
-        kwargs["deleted_articles"] = deleted_articles
+        kwargs["deleted_articles"] = (
+            models.Article.objects.select_related("current_revision")
+            .prefetch_related("urlpath_set")
+            .filter(current_revision__deleted=True)
+        )
         return super().get_context_data(**kwargs)

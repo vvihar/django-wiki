@@ -620,7 +620,9 @@ class History(ListView, ArticleMixin):
 
     def get_queryset(self):
         return (
-            models.ArticleRevision.objects.select_related("article")
+            models.ArticleRevision.objects.select_related(
+                "article", "user", "previous_revision"
+            )
             .filter(article=self.article)
             .order_by("-created")
         )
@@ -730,14 +732,52 @@ class SearchView(ListView):
             models.URLPath.root().article, self.request.user
         ):
             articles = articles.active().can_read(self.request.user)
-        return articles.order_by("-current_revision__created")
+        return (
+            articles.select_related("current_revision")
+            .prefetch_related("urlpath_set")
+            .order_by("-current_revision__created")
+        )
 
     def get_context_data(self, **kwargs):
         kwargs = super().get_context_data(**kwargs)
         kwargs["search_form"] = self.search_form
         kwargs["search_query"] = self.query
         kwargs["urlpath"] = self.urlpath
+        self._prime_cached_ancestors(kwargs.get("articles", []))
         return kwargs
+
+    def _prime_cached_ancestors(self, articles):
+        urlpaths = []
+        for article in articles:
+            urlpaths.extend(list(article.urlpath_set.all()))
+        if not urlpaths:
+            return
+        unique = {urlpath.id: urlpath for urlpath in urlpaths}.values()
+
+        ancestor_filter = Q()
+        for node in unique:
+            ancestor_filter |= Q(
+                tree_id=node.tree_id, lft__lte=node.lft, rght__gte=node.rght
+            )
+
+        ancestors = (
+            models.URLPath.objects.filter(ancestor_filter)
+            .select_related_common()
+            .order_by("tree_id", "lft")
+        )
+
+        targets_by_id = {node.id: node for node in unique}
+        current_tree = None
+        stack = []
+        for node in ancestors:
+            if node.tree_id != current_tree:
+                current_tree = node.tree_id
+                stack = []
+            while stack and stack[-1].rght < node.lft:
+                stack.pop()
+            if node.id in targets_by_id:
+                targets_by_id[node.id].cached_ancestors = list(stack)
+            stack.append(node)
 
 
 class Plugin(View):

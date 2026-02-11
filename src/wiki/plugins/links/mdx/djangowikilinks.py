@@ -58,6 +58,14 @@ class WikiPath(markdown.inlinepatterns.Pattern):
     def __init__(self, pattern, config, **kwargs):
         super().__init__(pattern, **kwargs)
         self.config = config
+        self._article_urlpath = None
+
+    def _get_article_urlpath(self):
+        if self._article_urlpath is None:
+            self._article_urlpath = models.URLPath.objects.get(
+                article=self.md.article
+            )
+        return self._article_urlpath
 
     # TODO: This method is too complex (C901)
     def handleMatch(self, m):  # noqa: max-complexity 11
@@ -85,7 +93,7 @@ class WikiPath(markdown.inlinepatterns.Pattern):
                 pass
         # Treat as relative path, meaning relative to the markdown instance's article
         else:
-            urlpath = models.URLPath.objects.get(article=self.md.article)
+            urlpath = self._get_article_urlpath()
             source_components = urlpath.path.strip("/").split("/")
             # We take the first (self.config['default_level'] - 1) components, so adding
             # one more component would make a path of length
@@ -103,11 +111,10 @@ class WikiPath(markdown.inlinepatterns.Pattern):
             else:
                 lookup = urlpath.get_descendants().filter(slug=wiki_path)
 
-            if lookup.count() > 0:
-                urlpath = lookup[0]
+            urlpath = lookup.first()
+            if urlpath:
                 path = urlpath.get_absolute_url()
             else:
-                urlpath = None
                 path = self.config["base_url"][0] + path_from_link
 
         label = m.group("label")
