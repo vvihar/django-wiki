@@ -41,7 +41,7 @@ def _get_request_cache():
         return None
     cache = getattr(_thread_cache, "wiki_urlpath_cache", None)
     if cache is None:
-        cache = {"by_path": {}, "ancestors": {}}
+        cache = {"by_path": {}, "ancestors": {}, "paths": {}}
         _thread_cache.wiki_urlpath_cache = cache
     return cache
 
@@ -173,6 +173,11 @@ class URLPath(MPTTModel):
 
     @property
     def path(self):
+        cache = _get_request_cache()
+        if self.pk and cache is not None:
+            cached_path = cache["paths"].get(self.pk)
+            if cached_path is not None:
+                return cached_path
         if not self.parent:
             return ""
 
@@ -185,7 +190,10 @@ class URLPath(MPTTModel):
         )
         slugs = [obj.slug if obj.slug else "" for obj in ancestors + [self]]
 
-        return "/".join(slugs) + "/"
+        path = "/".join(slugs) + "/"
+        if self.pk and cache is not None:
+            cache["paths"][self.pk] = path
+        return path
 
     def is_deleted(self):
         """
